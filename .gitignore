@@ -1,0 +1,47 @@
+# python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# virtual environment
+.venv/
+venv/
+env/
+
+# Build/packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# test/coverage
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# logs
+logs/
+*.log
+
+# model artifacts
+checkpoints/
+outputs/
+runs/
+wandb/
+
+# data 
+data/raw/
+data/processed/
+data/embeddings/
+
+# notebook checkpoints
+.ipynb_checkpoints/
+
+# ide
+.vscode/
+.idea/
+
+# os
+.DS_Store
+Thumbs.db
