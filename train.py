@@ -1,5 +1,6 @@
 import argparse
 import json
+from functools import partial
 from pathlib import Path
 
 import torch
@@ -11,66 +12,73 @@ from torch.optim.lr_scheduler import (
     SequentialLR,
     StepLR,
 )
-from torch.utils.data import DataLoader, Subset
+from torch.utils.data import DataLoader
 from torchvision import transforms
 
 from src.config import Config
 from src.dataset import PlantDataset
 from src.model import OrgansClassifier
 from src.trainer import Trainer
-from src.utils import seed_everything, resize_pwd
+from src.utils import resize_pwd, seed_everything
 
 
 def build_transforms(cfg):
+    pad_resize = partial(
+        resize_pwd,
+        padding_color=cfg.data.padding_color,
+        target_size=cfg.data.image_size,
+    )
+
     train_transform = transforms.Compose([
-        transforms.Lambda(lambda img: resize_pwd(img, cfg.data.padding_color, cfg.data.image_size)),
+        pad_resize,
         transforms.RandomHorizontalFlip(),
         transforms.ColorJitter(0.2, 0.2, 0.2),
         transforms.ToTensor(),
         transforms.Normalize(cfg.data.mean, cfg.data.std),
     ])
     val_test_transform = transforms.Compose([
-        transforms.Lambda(lambda img: resize_pwd(img, cfg.data.padding_color, cfg.data.image_size)),
+        pad_resize,
         transforms.ToTensor(),
         transforms.Normalize(cfg.data.mean, cfg.data.std),
     ])
     return train_transform, val_test_transform
 
 
-def build_dataloaders(cfg, val_ratio: float):
+def build_dataloaders(cfg):
     train_transform, val_test_transform = build_transforms(cfg)
 
-    full_train = PlantDataset(cfg.data.root_dir, transform=train_transform)
-    full_val = PlantDataset(cfg.data.root_dir, transform=val_test_transform)
+    root = Path(cfg.data.root_dir)
+    train_dir, val_dir, test_dir = root / "train", root / "val", root / "test"
+    for d in (train_dir, val_dir, test_dir):
+        if not d.is_dir():
+            raise FileNotFoundError(f"Missing split folder: {d}")
 
-    n = len(full_train)
-    n_val = int(n * val_ratio)
-    n_train = n - n_val
-
-    g = torch.Generator().manual_seed(cfg.train.seed)
-    indices = torch.randperm(n, generator=g).tolist()
-    train_idx = indices[:n_train]
-    val_idx = indices[n_train:]
-
-    train_ds = Subset(full_train, train_idx)
-    val_ds = Subset(full_val, val_idx)
-
-    train_loader = DataLoader(
-        train_ds,
-        batch_size=cfg.data.batch_size,
-        shuffle=True,
-        num_workers=cfg.data.num_workers,
-        pin_memory=cfg.data.pin_memory,
-        drop_last=True,
+    train_ds = PlantDataset(str(train_dir), transform=train_transform)
+    val_ds = PlantDataset(
+        str(val_dir), transform=val_test_transform, class_to_idx=train_ds.class_to_idx,
     )
-    val_loader = DataLoader(
-        val_ds,
-        batch_size=cfg.data.batch_size,
-        shuffle=False,
-        num_workers=cfg.data.num_workers,
-        pin_memory=cfg.data.pin_memory,
+    test_ds = PlantDataset(
+        str(test_dir), transform=val_test_transform, class_to_idx=train_ds.class_to_idx,
     )
-    return train_loader, val_loader, full_train.num_classes, full_train.class_to_idx
+
+    def make_loader(ds, shuffle, drop_last=False):
+        return DataLoader(
+            ds,
+            batch_size=cfg.data.batch_size,
+            shuffle=shuffle,
+            num_workers=cfg.data.num_workers,
+            pin_memory=cfg.data.pin_memory and cfg.train.device.startswith("cuda"),
+            drop_last=drop_last,
+        )
+
+    return (
+        make_loader(train_ds, shuffle=True, drop_last=True),
+        make_loader(val_ds, shuffle=False),
+        make_loader(test_ds, shuffle=False),
+        train_ds.num_classes,
+        train_ds.class_to_idx,
+        {"train": len(train_ds), "val": len(val_ds), "test": len(test_ds)},
+    )
 
 
 def build_optimizer(model, cfg):
@@ -110,15 +118,10 @@ def build_scheduler(optimizer, cfg):
         return main
 
     warmup_sched = LinearLR(
-        optimizer,
-        start_factor=1e-3,
-        end_factor=1.0,
-        total_iters=warmup,
+        optimizer, start_factor=1e-3, end_factor=1.0, total_iters=warmup,
     )
     return SequentialLR(
-        optimizer,
-        schedulers=[warmup_sched, main],
-        milestones=[warmup],
+        optimizer, schedulers=[warmup_sched, main], milestones=[warmup],
     )
 
 
@@ -127,19 +130,17 @@ def parse_args():
         description="Train plant organ classifier",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    p.add_argument("--resume", type=str, default=None,
-                   help="Path to checkpoint to resume from")
+    p.add_argument("--resume", type=str, default=None)
 
     data = p.add_argument_group("data")
-    data.add_argument("--data-dir", type=str, default="data/plant")
+    data.add_argument("--data-dir", type=str, default="data/plant",
+                      help="Root folder containing train/, val/, test/ subfolders")
     data.add_argument("--image-size", type=int, default=336)
     data.add_argument("--batch-size", type=int, default=64)
     data.add_argument("--num-workers", type=int, default=4)
-    data.add_argument("--val-ratio", type=float, default=0.2)
 
     model = p.add_argument_group("model")
-    model.add_argument("--backbone", type=str, default="resnet50",
-                       help="timm backbone name (e.g. resnet50, convnext_base)")
+    model.add_argument("--backbone", type=str, default="resnet50")
     model.add_argument("--no-pretrained", action="store_true")
 
     optim = p.add_argument_group("optim")
@@ -159,8 +160,7 @@ def parse_args():
     train.add_argument("--seed", type=int, default=42)
     train.add_argument("--device", type=str,
                        default="cuda" if torch.cuda.is_available() else "cpu")
-    train.add_argument("--patience", type=int, default=None,
-                       help="Early stopping patience (epochs), None = disabled")
+    train.add_argument("--patience", type=int, default=None)
     train.add_argument("--save-every", type=int, default=10)
     train.add_argument("--log-every", type=int, default=100)
     train.add_argument("--tsne-every", type=int, default=0)
@@ -214,13 +214,13 @@ def main():
 
     seed_everything(cfg.train.seed)
 
-    train_loader, val_loader, num_classes, class_to_idx = build_dataloaders(
-        cfg, val_ratio=args.val_ratio
-    )
+    train_loader, val_loader, test_loader, num_classes, class_to_idx, sizes = \
+        build_dataloaders(cfg)
     cfg.model.num_classes = num_classes
 
     out_dir = Path(cfg.paths.output_dir) / cfg.paths.experiment_name
     out_dir.mkdir(parents=True, exist_ok=True)
+
     cfg.save(out_dir / "config.json")
     with (out_dir / "class_to_idx.json").open("w", encoding="utf-8") as f:
         json.dump(class_to_idx, f, indent=2, ensure_ascii=False)
@@ -234,12 +234,31 @@ def main():
     scheduler = build_scheduler(optimizer, cfg)
 
     trainer = Trainer(model, optimizer, scheduler, cfg)
+    trainer.logger.info(
+        f"Dataset — train={sizes['train']} val={sizes['val']} test={sizes['test']} "
+        f"num_classes={num_classes}"
+    )
 
     if args.resume:
         start_epoch = trainer.load_checkpoint(args.resume)
         trainer.logger.info(f"Resumed from {args.resume} at epoch {start_epoch}")
 
     trainer.fit(train_loader, val_loader)
+
+    best_ckpt = trainer.checkpoint_dir / "best.pt"
+    if best_ckpt.exists():
+        trainer.load_checkpoint(best_ckpt)
+        trainer.logger.info(f"[TEST] Loaded best checkpoint from {best_ckpt}")
+    else:
+        trainer.logger.info("[TEST] best.pt not found, using final weights")
+
+    test_m = trainer.validate(test_loader)
+    trainer.logger.info(
+        f"[TEST] loss={test_m['loss']:.4f} acc={test_m['acc']*100:.2f}%"
+    )
+
+    with (out_dir / "test_results.json").open("w", encoding="utf-8") as f:
+        json.dump({"test_loss": test_m["loss"], "test_acc": test_m["acc"]}, f, indent=2)
 
 
 if __name__ == "__main__":
