@@ -146,7 +146,7 @@ def parse_args():
     optim = p.add_argument_group("optim")
     optim.add_argument("--optimizer", type=str, default="AdamW",
                        choices=["AdamW", "Adam", "SGD"])
-    optim.add_argument("--lr", type=float, default=5e-5)
+    optim.add_argument("--lr", type=float, default=1e-4)
     optim.add_argument("--weight-decay", type=float, default=1e-4)
     optim.add_argument("--momentum", type=float, default=0.9)
     optim.add_argument("--scheduler", type=str, default="CosineAnnealingLR",
