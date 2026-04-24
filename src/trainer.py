@@ -67,13 +67,14 @@ class Trainer:
             loss_meter.update(loss.item(), n=batch_size)
             acc_meter.update(acc, n=batch_size)
 
-            # Update progress bar every 10 batches to avoid excessive redrawing
-            if (step + 1) % 100 == 0:
+            # Update progress bar and metrics every 10 batches
+            if (step + 1) % 10 == 0:
                 pbar.set_postfix(
                     loss=f"{loss_meter.avg:.4f}",
                     acc=f"{acc_meter.avg*100:.2f}%",
                     lr=f"{self.optimizer.param_groups[0]['lr']:.2e}",
                 )
+                pbar.refresh()
 
             if (step + 1) % self.cfg.train.log_every == 0:
                 lr = self.optimizer.param_groups[0]["lr"]
