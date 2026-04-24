@@ -16,9 +16,14 @@ class OrgansClassifier(nn.Module):
         self.in_features = self.base_model.num_features
         self.classifier = nn.Sequential(
             nn.Linear(self.in_features, self.in_features // 2),
+            nn.BatchNorm1d(self.in_features // 2),
+            nn.GELU(),
+            nn.Dropout(0.4),
+            nn.Linear(self.in_features // 2, self.in_features // 4),
+            nn.BatchNorm1d(self.in_features // 4),
             nn.GELU(),
             nn.Dropout(0.3),
-            nn.Linear(self.in_features // 2, num_classes),
+            nn.Linear(self.in_features // 4, num_classes),
         )
     
     def train(self, mode: bool = True):
