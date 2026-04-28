@@ -10,6 +10,7 @@ import torch
 
 from datetime import datetime
 from typing import Optional
+from skimage.filters import unsharp_mask
 
 
 def resize_pwd(image, padding_color, target_size):
@@ -122,6 +123,48 @@ def seed_everything(seed: int = 42, deterministic: bool = False):
         torch.backends.cudnn.benchmark = False
     else:
         torch.backends.cudnn.benchmark = True
+
+
+class UnshaprMask:
+    """
+    Apply unsharp mask to an image.
+    - radius: the radius of the unsharp mask.
+    - amount: the amount of the unsharp mask.
+    """
+
+    def __init__(self, radius=1.0, amount=1.0):
+        self.radius = radius
+        self.amount = amount
+
+    def __call__(self, image):
+        """Apply unsharp mask to PIL Image or numpy array"""
+        if isinstance(image, Image.Image):
+            img_array = np.array(image, dtype=np.float32) / 255.0
+            is_pil = True
+        else:
+            img_array = np.array(image, dtype=np.float32)
+            is_pil = False
+
+        # apply unsharp mask
+        sharpened = unsharp_mask(img_array, radius=self.radius, amount=self.amount)
+
+        # clip value to valid range [0, 1] for PIL or [0, 255] for numpy
+        sharpened = np.clip(sharpened, 0, 1) 
+
+        if is_pil:
+            # convert back to PIL Image
+            sharpened = (sharpened * 255).astype(np.uint8)
+            return Image.fromarray(sharpened)
+        else:
+            return sharpened 
+        
+    def __repr__(self):
+        return f"UnshaprMask(radius={self.radius}, amount={self.amount})"
+    
+        
+
+         
+
 
 
 

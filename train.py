@@ -19,7 +19,7 @@ from src.config import Config
 from src.dataset import PlantDataset
 from src.model import OrgansClassifier
 from src.trainer import Trainer
-from src.utils import resize_pwd, seed_everything
+from src.utils import resize_pwd, seed_everything, UnshaprMask
 
 
 def build_transforms(cfg):
@@ -32,6 +32,7 @@ def build_transforms(cfg):
     train_transform = transforms.Compose([
         # pad_resize,
         transforms.Resize((cfg.data.image_size, cfg.data.image_size)),
+        UnshaprMask(radius=1.0, amount=1.0), # apply unsharp mask for all images
         transforms.RandomChoice([
             transforms.RandomRotation(30),
             transforms.ColorJitter(0.2, 0.2, 0.2)
@@ -47,6 +48,7 @@ def build_transforms(cfg):
     val_test_transform = transforms.Compose([
         # pad_resize,
         transforms.Resize((cfg.data.image_size, cfg.data.image_size)),
+        UnshaprMask(radius=1.0, amount=1.0),
         transforms.ToTensor(),
         transforms.Normalize(cfg.data.mean, cfg.data.std),
     ])
