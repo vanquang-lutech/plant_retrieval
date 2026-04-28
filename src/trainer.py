@@ -17,7 +17,7 @@ class Trainer:
 
         self.optimizer = optimizer
         self.scheduler = scheduler
-        self.criterion = nn.CrossEntropyLoss()
+        self.criterion = nn.CrossEntropyLoss(label_smoothing=0.15)
 
         self.use_amp = cfg.train.device.startswith("cuda")
         self.scaler = GradScaler("cuda", enabled=self.use_amp)

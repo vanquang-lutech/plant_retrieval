@@ -8,7 +8,7 @@ class OrgansClassifier(nn.Module):
         self.pretrained = pretrained
         self.num_classes = num_classes
     
-        self.base_model = timm.create_model(backbone, pretrained=pretrained, num_classes=0)
+        self.base_model = timm.create_model(backbone, pretrained=pretrained, drop_path_rate=0.3, num_classes=0)
 
         for param in self.base_model.parameters():
             param.requires_grad = False

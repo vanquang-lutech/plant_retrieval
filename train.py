@@ -2,7 +2,7 @@ import argparse
 import json
 from functools import partial
 from pathlib import Path
-
+from timm.optim import create_optimizer_v2
 import torch
 from torch.optim import Adam, AdamW, SGD
 from torch.optim.lr_scheduler import (
@@ -28,30 +28,38 @@ def build_transforms(cfg):
         padding_color=cfg.data.padding_color,
         target_size=cfg.data.image_size,
     )
+    size = cfg.data.image_size
+    sharpen = UnshaprMask(radius=1.0, amount=1.0)
 
     train_transform = transforms.Compose([
         pad_resize,
-        # transforms.Resize((cfg.data.image_size, cfg.data.image_size)),
-        UnshaprMask(radius=1.0, amount=1.0), # apply unsharp mask for all images
-        transforms.RandomChoice([
-            transforms.RandomRotation(30),
-            transforms.ColorJitter(0.2, 0.2, 0.2)
-        ]),
-
+        transforms.RandomHorizontalFlip(p=0.5),
+        transforms.RandomVerticalFlip(p=0.3),
+        transforms.RandomApply([transforms.RandomRotation(30)], p=0.5),
+        transforms.RandomApply([
+            transforms.GaussianBlur(kernel_size=5, sigma=(0.1, 2.0))
+        ], p=0.2),
+        sharpen,
         transforms.ToTensor(),
-        transforms.RandomChoice([
-            transforms.RandomErasing(p=1.0),
-            transforms.Lambda(lambda x: x), 
-        ]),
+        transforms.RandomApply([
+            transforms.RandomErasing(
+                p=1.0,
+                scale=(0.02, 0.2),
+                ratio=(0.3, 3.3),
+                value=0,
+            )
+        ], p=0.4),
+
         transforms.Normalize(cfg.data.mean, cfg.data.std),
     ])
+
     val_test_transform = transforms.Compose([
         pad_resize,
-        # transforms.Resize((cfg.data.image_size, cfg.data.image_size)),
-        UnshaprMask(radius=1.0, amount=1.0),
+        sharpen,
         transforms.ToTensor(),
         transforms.Normalize(cfg.data.mean, cfg.data.std),
     ])
+
     return train_transform, val_test_transform
 
 
@@ -93,22 +101,15 @@ def build_dataloaders(cfg):
 
 
 def build_optimizer(model, cfg):
-    trainable = [p for p in model.parameters() if p.requires_grad]
-    name = cfg.optim.optimizer.lower()
-
-    if name == "adamw":
-        return AdamW(trainable, lr=cfg.optim.lr, weight_decay=cfg.optim.weight_decay)
-    if name == "adam":
-        return Adam(trainable, lr=cfg.optim.lr, weight_decay=cfg.optim.weight_decay)
-    if name == "sgd":
-        return SGD(
-            trainable,
-            lr=cfg.optim.lr,
-            momentum=cfg.optim.momentum,
-            weight_decay=cfg.optim.weight_decay,
-            nesterov=True,
-        )
-    raise ValueError(f"Unknown optimizer: {cfg.optim.optimizer}")
+    return create_optimizer_v2(
+        model,
+        opt=cfg.optim.optimizer.lower(),
+        lr=cfg.optim.lr,
+        weight_decay=cfg.optim.weight_decay,
+        momentum=cfg.optim.momentum,
+        layer_decay=0.75,  
+        filter_bias_and_bn=True,  
+    )
 
 
 def build_scheduler(optimizer, cfg):
@@ -156,7 +157,7 @@ def parse_args():
 
     optim = p.add_argument_group("optim")
     optim.add_argument("--optimizer", type=str, default="AdamW",
-                       choices=["AdamW", "Adam", "SGD"])
+                       choices=["adamw", "adam", "sgd"])
     optim.add_argument("--lr", type=float, default=1e-4)
     optim.add_argument("--weight-decay", type=float, default=1e-4)
     optim.add_argument("--momentum", type=float, default=0.9)
