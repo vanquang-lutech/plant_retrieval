@@ -30,8 +30,8 @@ def build_transforms(cfg):
     )
 
     train_transform = transforms.Compose([
-        # pad_resize,
-        transforms.Resize((cfg.data.image_size, cfg.data.image_size)),
+        pad_resize,
+        # transforms.Resize((cfg.data.image_size, cfg.data.image_size)),
         UnshaprMask(radius=1.0, amount=1.0), # apply unsharp mask for all images
         transforms.RandomChoice([
             transforms.RandomRotation(30),
@@ -46,8 +46,8 @@ def build_transforms(cfg):
         transforms.Normalize(cfg.data.mean, cfg.data.std),
     ])
     val_test_transform = transforms.Compose([
-        # pad_resize,
-        transforms.Resize((cfg.data.image_size, cfg.data.image_size)),
+        pad_resize,
+        # transforms.Resize((cfg.data.image_size, cfg.data.image_size)),
         UnshaprMask(radius=1.0, amount=1.0),
         transforms.ToTensor(),
         transforms.Normalize(cfg.data.mean, cfg.data.std),
