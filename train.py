@@ -32,9 +32,16 @@ def build_transforms(cfg):
     train_transform = transforms.Compose([
         # pad_resize,
         transforms.Resize((cfg.data.image_size, cfg.data.image_size)),
-        transforms.RandomHorizontalFlip(),
-        transforms.ColorJitter(0.2, 0.2, 0.2),
+        transforms.RandomChoice([
+            transforms.RandomRotation(30),
+            transforms.ColorJitter(0.2, 0.2, 0.2)
+        ]),
+
         transforms.ToTensor(),
+        transforms.RandomChoice([
+            transforms.RandomErasing(p=1.0),
+            transforms.Lambda(lambda x: x), 
+        ]),
         transforms.Normalize(cfg.data.mean, cfg.data.std),
     ])
     val_test_transform = transforms.Compose([
