@@ -30,14 +30,16 @@ def build_transforms(cfg):
     )
 
     train_transform = transforms.Compose([
-        pad_resize,
+        # pad_resize,
+        transforms.Resize((cfg.data.image_size, cfg.data.image_size)),
         transforms.RandomHorizontalFlip(),
         transforms.ColorJitter(0.2, 0.2, 0.2),
         transforms.ToTensor(),
         transforms.Normalize(cfg.data.mean, cfg.data.std),
     ])
     val_test_transform = transforms.Compose([
-        pad_resize,
+        # pad_resize,
+        transforms.Resize((cfg.data.image_size, cfg.data.image_size)),
         transforms.ToTensor(),
         transforms.Normalize(cfg.data.mean, cfg.data.std),
     ])
