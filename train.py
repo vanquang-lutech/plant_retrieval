@@ -101,16 +101,39 @@ def build_dataloaders(cfg):
 
 
 def build_optimizer(model, cfg):
-    return create_optimizer_v2(
-        model,
-        opt=cfg.optim.optimizer.lower(),
-        lr=cfg.optim.lr,
-        weight_decay=cfg.optim.weight_decay,
-        momentum=cfg.optim.momentum,
-        layer_decay=0.75,  
-        filter_bias_and_bn=True,  
-    )
+    num_unfreeze = 4
+    decay = 0.65  
+    param_groups = []
 
+    # Unfreeze last N blocks with layer-wise LR decay
+    # lr_scale = decay ** (num_unfreeze - 1 - i) for block i in [0..N-1]
+    for i, idx in enumerate(range(-num_unfreeze, 0)):
+        lr_scale = decay ** (num_unfreeze - 1 - i) 
+        param_groups.append({
+            "params": [p for p in model.base_model.blocks[idx].parameters() if p.requires_grad],
+            "lr": cfg.optim.lr * lr_scale,
+            "weight_decay": cfg.optim.weight_decay,
+        })
+
+    param_groups.append({
+        "params": [p for p in model.base_model.norm.parameters() if p.requires_grad],
+        "lr": cfg.optim.lr,
+        "weight_decay": cfg.optim.weight_decay,
+    })
+
+    # Classifier — full LR
+    param_groups.append({
+        "params": model.classifier.parameters(),
+        "lr": cfg.optim.lr,
+        "weight_decay": cfg.optim.weight_decay,
+    })
+
+    return create_optimizer_v2(
+        param_groups,
+        opt=cfg.optim.optimizer.lower(),
+        momentum=cfg.optim.momentum,
+        filter_bias_and_bn=True,
+    )
 
 def build_scheduler(optimizer, cfg):
     name = cfg.optim.scheduler.lower()

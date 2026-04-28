@@ -8,10 +8,17 @@ class OrgansClassifier(nn.Module):
         self.pretrained = pretrained
         self.num_classes = num_classes
     
-        self.base_model = timm.create_model(backbone, pretrained=pretrained, drop_path_rate=0.3, num_classes=0)
+        self.base_model = timm.create_model(backbone, pretrained=pretrained, drop_path_rate=0.1, num_classes=0)
 
         for param in self.base_model.parameters():
             param.requires_grad = False
+
+        for block in self.base_model.blocks[-4:]:
+            for param in block.parameters():
+                param.requires_grad = True
+        
+        for param in self.base_model.norm.parameters():
+            param.requires_grad = True
 
         self.in_features = self.base_model.num_features
         self.classifier = nn.Sequential(
