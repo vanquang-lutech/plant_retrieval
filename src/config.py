@@ -65,8 +65,14 @@ class Config:
 
     @classmethod
     def load(cls, path):
+
         with Path(path).open("r", encoding="utf-8") as f:
             data = json.load(f)
+        
+        # convert padding color list to tuple
+        if "data" in data and "padding_color" in data["data"]:
+            data["data"]["padding_color"] = tuple(data["data"]["padding_color"])
+
         return cls(
             data=DataConfig(**data.get("data", {})),
             model=ModelConfig(**data.get("model", {})),
