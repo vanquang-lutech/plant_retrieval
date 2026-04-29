@@ -20,51 +20,17 @@ from src.dataset import PlantDataset
 from src.model import OrgansClassifier
 from src.trainer import Trainer
 from src.utils import resize_pwd, seed_everything, UnshaprMask
+from src.transforms import BuildTransforms
 
 
-def build_transforms(cfg):
-    pad_resize = partial(
-        resize_pwd,
-        padding_color=cfg.data.padding_color,
-        target_size=cfg.data.image_size,
-    )
-    size = cfg.data.image_size
-    sharpen = UnshaprMask(radius=1.0, amount=1.0)
-
-    train_transform = transforms.Compose([
-        pad_resize,
-        transforms.RandomHorizontalFlip(p=0.5),
-        transforms.RandomVerticalFlip(p=0.3),
-        transforms.RandomApply([transforms.RandomRotation(30)], p=0.5),
-        transforms.RandomApply([
-            transforms.GaussianBlur(kernel_size=5, sigma=(0.1, 2.0))
-        ], p=0.2),
-        sharpen,
-        transforms.ToTensor(),
-        transforms.RandomApply([
-            transforms.RandomErasing(
-                p=1.0,
-                scale=(0.02, 0.2),
-                ratio=(0.3, 3.3),
-                value=0,
-            )
-        ], p=0.4),
-
-        transforms.Normalize(cfg.data.mean, cfg.data.std),
-    ])
-
-    val_test_transform = transforms.Compose([
-        pad_resize,
-        sharpen,
-        transforms.ToTensor(),
-        transforms.Normalize(cfg.data.mean, cfg.data.std),
-    ])
-
-    return train_transform, val_test_transform
+build_transforms = BuildTransforms(Config())
+train_transform = build_transforms.build_train_transforms()
+val_test_transform = build_transforms.build_val_test_transforms()
 
 
 def build_dataloaders(cfg):
-    train_transform, val_test_transform = build_transforms(cfg)
+    train_transform = build_transforms.build_train_transforms()
+    val_test_transform = build_transforms.build_val_test_transforms()
 
     root = Path(cfg.data.root_dir)
     train_dir, val_dir, test_dir = root / "train", root / "val", root / "test"
